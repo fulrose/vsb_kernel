@@ -2,6 +2,7 @@ import pandas as pd
 import pyarrow.parquet as pq # Used to read the data
 import os 
 import numpy as np
+import tensorflow as tf
 
 from keras.layers import * # Keras is the most friendly Neural Network library, this Kernel use a lot of layers classes
 from keras.models import Model
