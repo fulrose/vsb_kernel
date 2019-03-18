@@ -220,6 +220,8 @@ else :
     load_all()
     X = np.concatenate(X)
     y = np.concatenate(y)
+    np.save('../input/X.npy', X)
+    np.save('../input/y.npy', y)
 
 print(X.shape, y.shape)
 
@@ -296,19 +298,19 @@ def model_lstm(input_shape):
     # to the last cell. Google RNN Attention for more information :)
     x = Attention(input_shape[1])(x)
     # A intermediate full connected (Dense) can help to deal with nonlinears outputs
-    x = Dense(64, activation="relu")(x)
-    
-    x = Dense(32, activation="relu")(x)
+    x = Dense(64, activation="relu")(x)   
 
     # A binnary classification as this must finish with shape (1,)
     # x = Dense(1, activation="sigmoid")(x)
 
     # second input
     inp2 = Input(shape=(1,))
-    x2 = Dense(32, activation="relu")(inp2)
+    # x2 = Dense(32, activation="relu")(inp2)
 
-    out = Concatenate()([x, x2])
+    out = Concatenate()([x, inp2])
 
+    x = Dense(64, activation="relu")(x)
+    x = Dense(32, activation="relu")(x)
     out = Dense(1, activation="sigmoid")(out)
 
     model = Model(inputs=[inp, inp2], outputs=out)
@@ -317,7 +319,10 @@ def model_lstm(input_shape):
     
     return model
 
-model_dir = "add_true_peak"
+model_dir = "con_64_32"
+
+if not os.path.isdir('../model/' + model_dir):
+    os.mkdir('../model/' + model_dir)
 
 # Here is where the training happens
 
@@ -342,7 +347,7 @@ for idx, (train_idx, val_idx) in enumerate(splits):
     # validation matthews_correlation greater than the last one.
     ckpt = ModelCheckpoint('../model/{}/weights_{}.h5'.format(model_dir, idx), save_best_only=True, save_weights_only=True, verbose=1, monitor='val_matthews_correlation', mode='max')
     # Train, train, train
-    model.fit([train_X, tr_feature_X], train_y, batch_size=128, epochs=50, validation_data=[[val_X, val_feature_X], val_y], callbacks=[ckpt])
+    model.fit([train_X, tr_feature_X], train_y, batch_size=128, epochs=70, validation_data=[[val_X, val_feature_X], val_y], callbacks=[ckpt])
     # loads the best weights saved by the checkpoint
     model.load_weights('../model/{}/weights_{}.h5'.format(model_dir, idx))
     # Add the predictions of the validation to the list preds_val
@@ -375,7 +380,7 @@ print("preds_val_shape : {}".format(preds_val.shape))
 val_score = (preds_val == y_val).sum() / y_val.shape[0]
 print("val_socre : {}".format(val_score))
 
-submission_title = "{}_{}".format(round(val_score, 3), best_threshold)
+submission_title = "{}_{}".format(round(val_score, 3), round(best_threshold, 2))
 
 meta_test = pd.read_csv('../input/metadata_test.csv')
 meta_test = meta_test.set_index(['signal_id'])
