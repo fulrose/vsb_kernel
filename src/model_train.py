@@ -225,7 +225,7 @@ else :
 
 print(X.shape, y.shape)
 
-def data_normalization(train, test):
+def data_standardization(train, test):
     train = train.astype('float64')
     test = test.astype('float64')
 
@@ -236,6 +236,18 @@ def data_normalization(train, test):
 
     test -= mean
     test /= std
+
+    return train, test
+
+def min_max_scaling(train, test):
+    train = train.astype('float64')
+    test = test.astype('float64')
+
+    min = train.min()
+    max = train.max()
+
+    train = (train - min) / (max - min)
+    test = (test - min) / (max - min)
 
     return train, test
 
@@ -262,7 +274,8 @@ def load_selected_features(col):
     test = df_test[selected]
 
     # data normalization
-    train, test = data_normalization(train.values, test.values)
+    # train, test = data_standardization(train.values, test.values)
+    train, test = min_max_scaling(train.values, test.values)
 
     return train, test
 
@@ -290,28 +303,23 @@ def model_lstm(input_shape):
     # Bidirecional implies that the 160 chunks are calculated in both ways, 0 to 159 and 159 to zero
     # although it appear that just 0 to 159 way matter, I have tested with and without, and tha later worked best
     # 128 and 64 are the number of cells used, too many can overfit and too few can underfit
-    x = Bidirectional(CuDNNLSTM(128, return_sequences=True))(inp)
+    x = Bidirectional(CuDNNLSTM(128, return_sequences=True), merge_mode='concat')(inp)
     # The second LSTM can give more fire power to the model, but can overfit it too
-    x = Bidirectional(CuDNNLSTM(64, return_sequences=True))(x)
+    x = Bidirectional(CuDNNGRU(64, return_sequences=True), merge_mode='concat')(x)
     # Attention is a new tecnology that can be applyed to a Recurrent NN to give more meanings to a signal found in the middle
     # of the data, it helps more in longs chains of data. A normal RNN give all the responsibility of detect the signal
     # to the last cell. Google RNN Attention for more information :)
     x = Attention(input_shape[1])(x)
     # A intermediate full connected (Dense) can help to deal with nonlinears outputs
     x = Dense(64, activation="relu")(x)   
-
     # A binnary classification as this must finish with shape (1,)
     # x = Dense(1, activation="sigmoid")(x)
-
     # second input
     inp2 = Input(shape=(1,))
-    # x2 = Dense(32, activation="relu")(inp2)
+    x = Concatenate()([x, inp2])
 
-    out = Concatenate()([x, inp2])
-
-    x = Dense(64, activation="relu")(x)
     x = Dense(32, activation="relu")(x)
-    out = Dense(1, activation="sigmoid")(out)
+    out = Dense(1, activation="sigmoid")(x)
 
     model = Model(inputs=[inp, inp2], outputs=out)
     # Pay attention in the addition of matthews_correlation metric in the compilation, it is a success factor key
@@ -319,7 +327,7 @@ def model_lstm(input_shape):
     
     return model
 
-model_dir = "con_64_32"
+model_dir = "concate_32"
 
 if not os.path.isdir('../model/' + model_dir):
     os.mkdir('../model/' + model_dir)
@@ -343,11 +351,12 @@ for idx, (train_idx, val_idx) in enumerate(splits):
 
     # instantiate the model for this fold
     model = model_lstm(train_X.shape)
+
     # This checkpoint helps to avoid overfitting. It just save the weights of the model if it delivered an
     # validation matthews_correlation greater than the last one.
     ckpt = ModelCheckpoint('../model/{}/weights_{}.h5'.format(model_dir, idx), save_best_only=True, save_weights_only=True, verbose=1, monitor='val_matthews_correlation', mode='max')
     # Train, train, train
-    model.fit([train_X, tr_feature_X], train_y, batch_size=128, epochs=70, validation_data=[[val_X, val_feature_X], val_y], callbacks=[ckpt])
+    model.fit([train_X, tr_feature_X], train_y, batch_size=128, epochs=50, validation_data=[[val_X, val_feature_X], val_y], callbacks=[ckpt])
     # loads the best weights saved by the checkpoint
     model.load_weights('../model/{}/weights_{}.h5'.format(model_dir, idx))
     # Add the predictions of the validation to the list preds_val
